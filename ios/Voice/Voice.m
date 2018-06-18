@@ -240,7 +240,7 @@ RCT_EXPORT_METHOD(getSupportedLocales:(RCTResponseSenderBlock)callback) {
         [localesArray addObject:locale.localeIdentifier];
     }
     
-    callback(localesArray);
+    callback(@[localesArray]);
 }
 
 - (dispatch_queue_t)methodQueue {
