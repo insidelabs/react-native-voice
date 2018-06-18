@@ -125,7 +125,11 @@ class RCTVoice {
   }
   getSupportedLocales() {
     return new Promise((resolve, reject) => {
-      Voice.getSupportedLocales(locales => resolve(locales));
+      if (Platform.OS === 'ios') {
+        Voice.getSupportedLocales(locales => resolve(locales));
+      } else {
+        resolve([]);
+      }
     });
   }
   _onSpeechStart(e) {
