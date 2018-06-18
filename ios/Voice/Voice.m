@@ -233,9 +233,15 @@ RCT_EXPORT_METHOD(startSpeech:(NSString*)localeStr callback:(RCTResponseSenderBl
 }
 
 RCT_EXPORT_METHOD(getSupportedLocales:(RCTResponseSenderBlock)callback) {
-    callback(SFSpeechRecognizer.supportedLocales());
+    NSSet<NSLocale *> *locales = [SFSpeechRecognizer supportedLocales];
+    NSMutableArray *localesArray = [[NSMutableArray alloc] init];
+    
+    for(NSLocale *locale in locales) {
+        [localesArray addObject:locale.localeIdentifier];
+    }
+    
+    callback(localesArray);
 }
-
 
 - (dispatch_queue_t)methodQueue {
     return dispatch_get_main_queue();
