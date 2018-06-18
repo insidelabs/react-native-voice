@@ -232,6 +232,10 @@ RCT_EXPORT_METHOD(startSpeech:(NSString*)localeStr callback:(RCTResponseSenderBl
     callback(@[@false]);
 }
 
+RCT_EXPORT_METHOD(getSupportedLocales:(RCTResponseSenderBlock)callback) {
+    callback(SFSpeechRecognizer.supportedLocales());
+}
+
 
 - (dispatch_queue_t)methodQueue {
     return dispatch_get_main_queue();
