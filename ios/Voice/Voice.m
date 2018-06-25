@@ -101,11 +101,19 @@
 
     AVAudioFormat* recordingFormat = [inputNode outputFormatForBus:0];
 
-    [inputNode installTapOnBus:0 bufferSize:1024 format:recordingFormat block:^(AVAudioPCMBuffer * _Nonnull buffer, AVAudioTime * _Nonnull when) {
-        if (self.recognitionRequest != nil) {
-            [self.recognitionRequest appendAudioPCMBuffer:buffer];
-        }
-    }];
+    // Start recording and append recording buffer to speech recognizer
+    @try {
+        [inputNode installTapOnBus:0 bufferSize:1024 format:recordingFormat block:^(AVAudioPCMBuffer * _Nonnull buffer, AVAudioTime * _Nonnull when) {
+            if (self.recognitionRequest != nil) {
+                [self.recognitionRequest appendAudioPCMBuffer:buffer];
+            }
+        }];
+    } @catch (NSException *exception) {
+        NSLog(@"[Error] - %@ %@", exception.name, exception.reason);
+        [self sendResult:RCTMakeError([exception reason], nil, nil) :nil :nil :nil];
+        [self teardown];
+        return;
+    } @finally {}
 
     [self.audioEngine prepare];
     [self.audioEngine startAndReturnError:&audioSessionError];
