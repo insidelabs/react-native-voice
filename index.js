@@ -1,5 +1,5 @@
-'use strict';
-import React, { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import React from 'react';
+import { NativeModules, NativeEventEmitter, Platform, PermissionsAndroid } from 'react-native';
 
 const { Voice } = NativeModules;
 
@@ -20,6 +20,35 @@ class RCTVoice {
       onSpeechVolumeChanged: this._onSpeechVolumeChanged.bind(this)
     };
   }
+
+  rationale = {
+    title: 'Microphone Permission',
+    message: 'This app would like access to use your microphone.'
+  };
+
+  defaultSpeechOptionsAndroid = {
+    EXTRA_LANGUAGE_MODEL: 'LANGUAGE_MODEL_FREE_FORM',
+    EXTRA_MAX_RESULTS: 5,
+    EXTRA_PARTIAL_RESULTS: true,
+    REQUEST_PERMISSIONS_AUTO: true
+  };
+
+  /**
+   * Updates the rationale
+   *
+   * @param {string} title
+   * @param {string} message
+   */
+  setPermissionRationaleAndroid(title, message) {
+    this.rationale = {
+      title,
+      message
+    };
+  }
+
+  /**
+   * Removes all event listeners. Use when unmounting your component.
+   */
   removeAllListeners() {
     Voice.onSpeechStart = null;
     Voice.onSpeechRecognized = null;
@@ -28,101 +57,131 @@ class RCTVoice {
     Voice.onSpeechResults = null;
     Voice.onSpeechPartialResults = null;
     Voice.onSpeechVolumeChanged = null;
-  }
-  destroy() {
-    if (!this._loaded && !this._listeners) {
-      return Promise.resolve();
+
+    if (this._listeners) {
+      this._listeners.map((listener, index) => listener.remove());
+      this._listeners = null;
     }
-    return new Promise((resolve, reject) => {
-      Voice.destroySpeech(error => {
-        if (error) {
-          reject(new Error(error));
-        } else {
-          if (this._listeners) {
-            this._listeners.map((listener, index) => listener.remove());
-            this._listeners = null;
-          }
-          resolve();
-        }
-      });
-    });
   }
-  start(locale, options = {}) {
+
+  /**
+   * Destroys the speech recognizer instance & removes all listeners
+   */
+  async destroy() {
+    if (!this._loaded && !this._listeners) {
+      return;
+    }
+    try {
+      await Voice.destroySpeech();
+      if (this._listeners) {
+        this.removeAllListeners();
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Requests permissions to use the microphone.
+   * Returns true if the user provided permissions
+   */
+  async requestPermissionsAndroid() {
+    if (Platform.OS !== 'android') {
+      return true;
+    }
+
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, this.rationale);
+    return result === true || result === PermissionsAndroid.RESULTS.GRANTED;
+  }
+
+  /**
+   * Starts speech recognition
+   * @param {string} locale Locale string
+   * @param {object} options (Android) Additional options for speech recognition
+   */
+  async start(locale, options = {}) {
     if (!this._loaded && !this._listeners && voiceEmitter !== null) {
       this._listeners = Object.keys(this._events).map((key, index) => voiceEmitter.addListener(key, this._events[key]));
     }
 
-    return new Promise((resolve, reject) => {
-      const callback = error => {
-        if (error) {
-          reject(new Error(error));
-        } else {
-          resolve();
+    switch (Platform.OS) {
+      case 'ios':
+        return await Voice.startSpeech(locale, { continuous: Boolean(options.continuous) });
+      case 'android':
+        // Returns "true" if the user already has permissions
+        const hasPermissions = await this.requestPermissionsAndroid();
+        if (!hasPermissions) {
+          throw { code: 'permissions' };
         }
-      };
-      if (Platform.OS === 'android') {
-        Voice.startSpeech(
-          locale,
-          Object.assign(
-            {
-              EXTRA_LANGUAGE_MODEL: 'LANGUAGE_MODEL_FREE_FORM',
-              EXTRA_MAX_RESULTS: 5,
-              EXTRA_PARTIAL_RESULTS: true,
-              REQUEST_PERMISSIONS_AUTO: true
-            },
-            options
-          ),
-          callback
-        );
-      } else {
-        Voice.startSpeech(locale, callback);
-      }
-    });
-  }
-  stop() {
-    if (!this._loaded && !this._listeners) {
-      return Promise.resolve();
+
+        // Checks whether speech recognition is available on the device
+        const isAvailable = await this.isAvailable();
+        if (!isAvailable) {
+          throw { code: 'not_available' };
+        }
+
+        // Start speech recognition
+        const speechOptions = {
+          ...this.defaultSpeechOptionsAndroid,
+          ...options
+        };
+        return await Voice.startSpeech(locale, speechOptions);
+      default:
+        // Non-android & iOS devices are not supported
+        throw { code: 'not_available' };
     }
-    return new Promise((resolve, reject) => {
-      Voice.stopSpeech(error => {
-        if (error) {
-          reject(new Error(error));
-        } else {
-          resolve();
-        }
-      });
-    });
   }
-  cancel() {
+
+  async stop() {
     if (!this._loaded && !this._listeners) {
-      return Promise.resolve();
+      return;
     }
-    return new Promise((resolve, reject) => {
-      Voice.cancelSpeech(error => {
-        if (error) {
-          reject(new Error(error));
-        } else {
-          resolve();
-        }
-      });
-    });
+    // on Android this may throw an error
+    await Voice.stopSpeech();
   }
-  isAvailable() {
-    return new Promise((resolve, reject) => {
-      Voice.isSpeechAvailable((isAvailable, error) => {
-        if (error) {
-          reject(new Error(error));
-        } else {
-          resolve(isAvailable);
-        }
-      });
-    });
+
+  /**
+   * Cancels speech recognition
+   */
+  async cancel() {
+    if (!this._loaded && !this._listeners) {
+      return;
+    }
+    // on Android this may throw an error
+    await Voice.cancelSpeech();
   }
-  isRecognizing() {
-    return new Promise((resolve, reject) => {
-      Voice.isRecognizing(isRecognizing => resolve(isRecognizing));
-    });
+
+  /**
+   * Verifies that voice recognition is available on the device
+   */
+  async isAvailable() {
+    return await Voice.isSpeechAvailable();
   }
+
+  /**
+   * (iOS) Verifies that voice recognition is ready to be used
+   */
+  async isReady() {
+    if (Platform.OS !== 'ios') {
+      return true;
+    }
+    return await Voice.isReady();
+  }
+
+  /**
+   * Sets the iOS audio category.
+   * @param {string} category "Ambient" | "SoloAmbient" | "Playback" | "Record" | "Record" | "PlayAndRecord" | "AudioProcessing" | "MultiRoute"
+   * @param {boolean} mixWithOthers Enables: "AVAudioSessionCategoryOptionMixWithOthers"
+   */
+  setCategory(category, mixWithOthers = false) {
+    if (Platform.OS !== 'ios') return;
+    Voice.setCategory(category, mixWithOthers);
+  }
+
+  async isRecognizing() {
+    return await Voice.isRecognizing();
+  }
+
   getSupportedLocales() {
     return new Promise((resolve, reject) => {
       if (Platform.OS === 'ios') {
@@ -132,9 +191,10 @@ class RCTVoice {
       }
     });
   }
-  _onSpeechStart(e) {
+
+  _onSpeechStart() {
     if (this.onSpeechStart) {
-      this.onSpeechStart(e);
+      this.onSpeechStart();
     }
   }
   _onSpeechRecognized(e) {
