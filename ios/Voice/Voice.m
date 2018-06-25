@@ -13,6 +13,7 @@
 @property (nonatomic) SFSpeechRecognitionTask* recognitionTask;
 @property (nonatomic) AVAudioSession* audioSession;
 @property (nonatomic) NSString *sessionId;
+@property (nonatomic) BOOL isTearingDown;
 @end
 
 @implementation Voice
@@ -143,10 +144,10 @@
 }
 
 - (void) teardown {
+    self.isTearingDown = YES;
     [self.recognitionTask cancel];
     self.recognitionTask = nil;
     self.audioSession = nil;
-    self.sessionId = nil;
     
     if (self.audioEngine.isRunning) {
         [self.audioEngine stop];
@@ -155,6 +156,8 @@
     }
 
     self.recognitionRequest = nil;
+    self.sessionId = nil;
+    self.isTearingDown = NO;
 }
 
 // Called when the availability of the given recognizer changes
@@ -213,6 +216,11 @@ RCT_EXPORT_METHOD(startSpeech:(NSString*)localeStr callback:(RCTResponseSenderBl
         return;
     }
 
+    if (self.isTearingDown) {
+        [self sendResult:RCTMakeError(@"Speech recognition is not ready", nil, nil) :nil :nil :nil];
+        return;
+    };
+
     [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
         switch (status) {
             case SFSpeechRecognizerAuthorizationStatusNotDetermined:
@@ -241,6 +249,14 @@ RCT_EXPORT_METHOD(getSupportedLocales:(RCTResponseSenderBlock)callback) {
     }
     
     callback(@[localesArray]);
+}
+
+RCT_EXPORT_METHOD(isReady:(RCTResponseSenderBlock)callback) {
+    if (self.isTearingDown || self.sessionId != nil) {
+        callback(@[@false]);
+        return;
+    }
+    callback(@[@true]);
 }
 
 - (dispatch_queue_t)methodQueue {

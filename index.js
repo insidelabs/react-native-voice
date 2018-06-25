@@ -132,6 +132,15 @@ class RCTVoice {
       }
     });
   }
+  isReady() {
+    return new Promise((resolve, reject) => {
+      if (Platform.OS === 'ios') {
+        Voice.isReady(ready => resolve(ready));
+      } else {
+        resolve(true);
+      }
+    });
+  }
   _onSpeechStart(e) {
     if (this.onSpeechStart) {
       this.onSpeechStart(e);
